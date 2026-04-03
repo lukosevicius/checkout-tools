@@ -247,7 +247,8 @@ trait Checkout_Diagnostics_Admin_Trait
 
         $device_usage = $wpdb->get_results(
             $wpdb->prepare(
-                "SELECT device_type, COUNT(*) AS total
+                "SELECT device_type, COUNT(*) AS total,
+                        ROUND((SUM(CASE WHEN successful_orders > 0 THEN 1 ELSE 0 END) * 100.0) / COUNT(*), 1) AS conversion_rate
                 FROM {$sessions_table_name}
                 WHERE last_seen_at BETWEEN %s AND %s
                   AND device_type <> ''
@@ -262,7 +263,8 @@ trait Checkout_Diagnostics_Admin_Trait
 
         $os_usage = $wpdb->get_results(
             $wpdb->prepare(
-                "SELECT os_name, COUNT(*) AS total
+                "SELECT os_name, COUNT(*) AS total,
+                        ROUND((SUM(CASE WHEN successful_orders > 0 THEN 1 ELSE 0 END) * 100.0) / COUNT(*), 1) AS conversion_rate
                 FROM {$sessions_table_name}
                 WHERE last_seen_at BETWEEN %s AND %s
                   AND os_name <> ''
@@ -277,7 +279,8 @@ trait Checkout_Diagnostics_Admin_Trait
 
         $language_usage = $wpdb->get_results(
             $wpdb->prepare(
-                "SELECT language, COUNT(*) AS total
+                "SELECT language, COUNT(*) AS total,
+                        ROUND((SUM(CASE WHEN successful_orders > 0 THEN 1 ELSE 0 END) * 100.0) / COUNT(*), 1) AS conversion_rate
                 FROM {$sessions_table_name}
                 WHERE last_seen_at BETWEEN %s AND %s
                   AND language <> ''
@@ -290,9 +293,9 @@ trait Checkout_Diagnostics_Admin_Trait
             ARRAY_A
         );
 
-        $views = max(0, $event_counts['checkout_view']);
+        $checkout_visitors = count(self::get_distinct_sessions_for_event('checkout_view', $start_datetime, $end_datetime));
         $orders = max(0, $event_counts['order_success']);
-        $view_to_order = $views > 0 ? round(($orders / $views) * 100, 1) : 0;
+        $view_to_order = $checkout_visitors > 0 ? round(($orders / $checkout_visitors) * 100, 1) : 0;
         $track_privileged_users = self::should_track_privileged_users();
         $recent_sessions = self::get_recent_sessions($start_datetime, $end_datetime);
         $selected_session_key = self::get_selected_session_key();
@@ -301,6 +304,7 @@ trait Checkout_Diagnostics_Admin_Trait
 
         ?>
         <div class="wrap">
+            <?php self::render_admin_styles(); ?>
             <h1><?php esc_html_e('Checkout Tools', 'checkout-diagnostics'); ?></h1>
             <p><?php esc_html_e('A lightweight view of checkout usage, validation pain points, and successful orders.', 'checkout-diagnostics'); ?></p>
 
@@ -328,59 +332,80 @@ trait Checkout_Diagnostics_Admin_Trait
                 </div>
             <?php endif; ?>
 
-            <form method="get" style="margin: 1rem 0 1.5rem;">
+            <form method="get" class="checkout-diagnostics-filter-form">
                 <input type="hidden" name="page" value="checkout-diagnostics">
-                <label for="checkout-diagnostics-start" style="display: inline-block; margin-right: 1rem;">
+                <input type="hidden" name="range" value="custom">
+                <div class="checkout-diagnostics-range-actions">
+                    <a
+                        href="<?php echo esc_url(add_query_arg(array('page' => 'checkout-diagnostics', 'range' => 'last_30'), admin_url('admin.php'))); ?>"
+                        class="button <?php echo 'last_30' === $date_range['preset'] ? 'button-primary' : 'button-secondary'; ?>"
+                    >
+                        <?php esc_html_e('Last 30 days', 'checkout-diagnostics'); ?>
+                    </a>
+                    <a
+                        href="<?php echo esc_url(add_query_arg(array('page' => 'checkout-diagnostics', 'range' => 'this_month'), admin_url('admin.php'))); ?>"
+                        class="button <?php echo 'this_month' === $date_range['preset'] ? 'button-primary' : 'button-secondary'; ?>"
+                    >
+                        <?php esc_html_e('This month', 'checkout-diagnostics'); ?>
+                    </a>
+                    <a
+                        href="<?php echo esc_url(add_query_arg(array('page' => 'checkout-diagnostics', 'range' => 'all'), admin_url('admin.php'))); ?>"
+                        class="button <?php echo 'all' === $date_range['preset'] ? 'button-primary' : 'button-secondary'; ?>"
+                    >
+                        <?php esc_html_e('All data', 'checkout-diagnostics'); ?>
+                    </a>
+                </div>
+                <label for="checkout-diagnostics-start">
                     <?php esc_html_e('Start date', 'checkout-diagnostics'); ?><br>
                     <input id="checkout-diagnostics-start" type="date" name="start_date" value="<?php echo esc_attr($date_range['start']); ?>">
                 </label>
-                <label for="checkout-diagnostics-end" style="display: inline-block; margin-right: 1rem;">
+                <label for="checkout-diagnostics-end">
                     <?php esc_html_e('End date', 'checkout-diagnostics'); ?><br>
                     <input id="checkout-diagnostics-end" type="date" name="end_date" value="<?php echo esc_attr($date_range['end']); ?>">
                 </label>
-                <button type="submit" class="button button-primary" style="margin-top: 1.3rem;">
+                <button type="submit" class="button button-primary checkout-diagnostics-filter-submit">
                     <?php esc_html_e('Filter', 'checkout-diagnostics'); ?>
                 </button>
             </form>
 
-            <div style="display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); margin-bottom: 1.5rem;">
-                <?php self::render_stat_card(__('Checkout views', 'checkout-diagnostics'), $views); ?>
+            <div class="checkout-diagnostics-grid checkout-diagnostics-grid--stats">
+                <?php self::render_stat_card(__('Checkout visitors', 'checkout-diagnostics'), $checkout_visitors); ?>
                 <?php self::render_stat_card(__('Validation failures', 'checkout-diagnostics'), $event_counts['validation_failed']); ?>
                 <?php self::render_stat_card(__('Successful orders', 'checkout-diagnostics'), $orders); ?>
-                <?php self::render_stat_card(__('View to order', 'checkout-diagnostics'), $view_to_order . '%'); ?>
+                <?php self::render_stat_card(__('Conversion rate', 'checkout-diagnostics'), $view_to_order . '%'); ?>
             </div>
 
-            <div style="display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));">
-                <div style="background: #fff; border: 1px solid #dcdcde; padding: 1rem;">
+            <div class="checkout-diagnostics-grid checkout-diagnostics-grid--cards">
+                <div class="checkout-diagnostics-panel">
                     <h2 style="margin-top: 0;"><?php esc_html_e('Top validation errors', 'checkout-diagnostics'); ?></h2>
                     <?php self::render_validation_errors_table($top_errors); ?>
                 </div>
 
-                <div style="background: #fff; border: 1px solid #dcdcde; padding: 1rem;">
+                <div class="checkout-diagnostics-panel">
                     <h2 style="margin-top: 0;"><?php esc_html_e('Shipping methods on successful orders', 'checkout-diagnostics'); ?></h2>
                     <?php self::render_usage_table($shipping_usage, 'shipping_method'); ?>
                 </div>
 
-                <div style="background: #fff; border: 1px solid #dcdcde; padding: 1rem;">
+                <div class="checkout-diagnostics-panel">
                     <h2 style="margin-top: 0;"><?php esc_html_e('Payment methods on successful orders', 'checkout-diagnostics'); ?></h2>
                     <?php self::render_usage_table($payment_usage, 'payment_method'); ?>
                 </div>
             </div>
 
-            <div style="display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); margin-top: 1rem;">
-                <div style="background: #fff; border: 1px solid #dcdcde; padding: 1rem;">
+            <div class="checkout-diagnostics-grid checkout-diagnostics-grid--cards" style="margin-top: 1rem;">
+                <div class="checkout-diagnostics-panel">
                     <h2 style="margin-top: 0;"><?php esc_html_e('Device types on sessions', 'checkout-diagnostics'); ?></h2>
-                    <?php self::render_usage_table($device_usage, 'device_type'); ?>
+                    <?php self::render_usage_table($device_usage, 'device_type', true); ?>
                 </div>
 
-                <div style="background: #fff; border: 1px solid #dcdcde; padding: 1rem;">
+                <div class="checkout-diagnostics-panel">
                     <h2 style="margin-top: 0;"><?php esc_html_e('Operating systems on sessions', 'checkout-diagnostics'); ?></h2>
-                    <?php self::render_usage_table($os_usage, 'os_name'); ?>
+                    <?php self::render_usage_table($os_usage, 'os_name', true); ?>
                 </div>
 
-                <div style="background: #fff; border: 1px solid #dcdcde; padding: 1rem;">
+                <div class="checkout-diagnostics-panel">
                     <h2 style="margin-top: 0;"><?php esc_html_e('Languages on sessions', 'checkout-diagnostics'); ?></h2>
-                    <?php self::render_usage_table($language_usage, 'language'); ?>
+                    <?php self::render_usage_table($language_usage, 'language', true); ?>
                 </div>
             </div>
 
@@ -417,8 +442,8 @@ trait Checkout_Diagnostics_Admin_Trait
                 </button>
             </form>
 
-            <div style="display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); margin-top: 1.5rem;">
-                <form method="post" style="background: #fff; border: 1px solid #dcdcde; padding: 1rem;">
+            <div class="checkout-diagnostics-grid checkout-diagnostics-grid--cards" style="margin-top: 1.5rem;">
+                <form method="post" class="checkout-diagnostics-panel">
                     <h2 style="margin-top: 0;"><?php esc_html_e('Export data', 'checkout-diagnostics'); ?></h2>
                     <p style="color: #50575e;">
                         <?php esc_html_e('Download all checkout diagnostics rows as a JSON file for moving data between environments.', 'checkout-diagnostics'); ?>
@@ -429,7 +454,7 @@ trait Checkout_Diagnostics_Admin_Trait
                     </button>
                 </form>
 
-                <form method="post" enctype="multipart/form-data" style="background: #fff; border: 1px solid #dcdcde; padding: 1rem;">
+                <form method="post" enctype="multipart/form-data" class="checkout-diagnostics-panel">
                     <h2 style="margin-top: 0;"><?php esc_html_e('Import data', 'checkout-diagnostics'); ?></h2>
                     <p style="color: #50575e;">
                         <?php esc_html_e('Replace all current diagnostics data with an exported JSON file. This does a clean import and removes existing rows first.', 'checkout-diagnostics'); ?>
@@ -474,7 +499,7 @@ trait Checkout_Diagnostics_Admin_Trait
     private static function render_stat_card($label, $value)
     {
         ?>
-        <div style="background: #fff; border: 1px solid #dcdcde; padding: 1rem;">
+        <div class="checkout-diagnostics-panel">
             <div style="font-size: 0.875rem; color: #50575e; margin-bottom: 0.35rem;">
                 <?php echo esc_html($label); ?>
             </div>
@@ -498,7 +523,8 @@ trait Checkout_Diagnostics_Admin_Trait
             return;
         }
 
-        echo '<table class="widefat striped"><thead><tr><th>' . esc_html__('Error code', 'checkout-diagnostics') . '</th><th>' . esc_html__('Field', 'checkout-diagnostics') . '</th><th>' . esc_html__('Count', 'checkout-diagnostics') . '</th></tr></thead><tbody>';
+        self::open_table_wrapper();
+        echo '<table class="widefat striped checkout-diagnostics-table"><thead><tr><th>' . esc_html__('Error code', 'checkout-diagnostics') . '</th><th>' . esc_html__('Field', 'checkout-diagnostics') . '</th><th>' . esc_html__('Count', 'checkout-diagnostics') . '</th></tr></thead><tbody>';
 
         foreach ($rows as $row) {
             echo '<tr>';
@@ -509,32 +535,48 @@ trait Checkout_Diagnostics_Admin_Trait
         }
 
         echo '</tbody></table>';
+        self::close_table_wrapper();
     }
 
     /**
      * Render a simple grouped usage table.
      *
-     * @param array  $rows  Table rows.
-     * @param string $field Field key.
+     * @param array   $rows                 Table rows.
+     * @param string  $field                Field key.
+     * @param boolean $show_conversion_rate Whether to show conversion rate.
      * @return void
      */
-    private static function render_usage_table($rows, $field)
+    private static function render_usage_table($rows, $field, $show_conversion_rate = false)
     {
         if (empty($rows)) {
             echo '<p>' . esc_html__('No data found in this range.', 'checkout-diagnostics') . '</p>';
             return;
         }
 
-        echo '<table class="widefat striped"><thead><tr><th>' . esc_html__('Value', 'checkout-diagnostics') . '</th><th>' . esc_html__('Count', 'checkout-diagnostics') . '</th></tr></thead><tbody>';
+        self::open_table_wrapper();
+        echo '<table class="widefat striped checkout-diagnostics-table"><thead><tr><th>' . esc_html__('Value', 'checkout-diagnostics') . '</th><th>' . esc_html__('Count', 'checkout-diagnostics') . '</th>';
+
+        if ($show_conversion_rate) {
+            echo '<th>' . esc_html__('Conversion rate', 'checkout-diagnostics') . '</th>';
+        }
+
+        echo '</tr></thead><tbody>';
 
         foreach ($rows as $row) {
             echo '<tr>';
             echo '<td>' . esc_html($row[$field]) . '</td>';
             echo '<td>' . esc_html((string) (int) $row['total']) . '</td>';
+
+            if ($show_conversion_rate) {
+                $conversion_rate = isset($row['conversion_rate']) ? round((float) $row['conversion_rate'], 1) : 0;
+                echo '<td>' . esc_html(number_format_i18n($conversion_rate, 1)) . '%</td>';
+            }
+
             echo '</tr>';
         }
 
         echo '</tbody></table>';
+        self::close_table_wrapper();
     }
 
     /**
@@ -552,7 +594,8 @@ trait Checkout_Diagnostics_Admin_Trait
             return;
         }
 
-        echo '<table class="widefat striped"><thead><tr>';
+        self::open_table_wrapper();
+        echo '<table class="widefat striped checkout-diagnostics-table"><thead><tr>';
         echo '<th>' . esc_html__('Last seen', 'checkout-diagnostics') . '</th>';
         echo '<th>' . esc_html__('Session', 'checkout-diagnostics') . '</th>';
         echo '<th>' . esc_html__('Name', 'checkout-diagnostics') . '</th>';
@@ -597,6 +640,7 @@ trait Checkout_Diagnostics_Admin_Trait
         }
 
         echo '</tbody></table>';
+        self::close_table_wrapper();
     }
 
     /**
@@ -608,7 +652,7 @@ trait Checkout_Diagnostics_Admin_Trait
      */
     private static function render_session_details($session, $events)
     {
-        echo '<div style="display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); margin-bottom: 1rem;">';
+        echo '<div class="checkout-diagnostics-grid checkout-diagnostics-grid--stats" style="margin-bottom: 1rem;">';
         self::render_stat_card(__('Views', 'checkout-diagnostics'), (int) $session['view_count']);
         self::render_stat_card(__('Refreshes', 'checkout-diagnostics'), (int) $session['refresh_count']);
         self::render_stat_card(__('Clicks', 'checkout-diagnostics'), (int) $session['place_order_clicks']);
@@ -637,7 +681,8 @@ trait Checkout_Diagnostics_Admin_Trait
         }
 
         echo '<h3>' . esc_html__('Event history', 'checkout-diagnostics') . '</h3>';
-        echo '<table class="widefat striped"><thead><tr>';
+        self::open_table_wrapper();
+        echo '<table class="widefat striped checkout-diagnostics-table"><thead><tr>';
         echo '<th>' . esc_html__('Time', 'checkout-diagnostics') . '</th>';
         echo '<th>' . esc_html__('Event', 'checkout-diagnostics') . '</th>';
         echo '<th>' . esc_html__('Shipping', 'checkout-diagnostics') . '</th>';
@@ -665,6 +710,7 @@ trait Checkout_Diagnostics_Admin_Trait
         }
 
         echo '</tbody></table>';
+        self::close_table_wrapper();
     }
 
     /**
@@ -686,7 +732,8 @@ trait Checkout_Diagnostics_Admin_Trait
         }
 
         echo '<h3>' . esc_html__('Latest cart snapshot', 'checkout-diagnostics') . '</h3>';
-        echo '<table class="widefat striped"><thead><tr>';
+        self::open_table_wrapper();
+        echo '<table class="widefat striped checkout-diagnostics-table"><thead><tr>';
         echo '<th>' . esc_html__('Product', 'checkout-diagnostics') . '</th>';
         echo '<th>' . esc_html__('Qty', 'checkout-diagnostics') . '</th>';
         echo '<th>' . esc_html__('Line total', 'checkout-diagnostics') . '</th>';
@@ -705,37 +752,222 @@ trait Checkout_Diagnostics_Admin_Trait
         }
 
         echo '</tbody></table>';
+        self::close_table_wrapper();
     }
 
     /**
-     * Get the admin report date range or default to the current month.
+     * Output responsive admin styles for report cards and tables.
+     *
+     * @return void
+     */
+    private static function render_admin_styles()
+    {
+        ?>
+        <style>
+            .checkout-diagnostics-grid {
+                display: grid;
+                gap: 1rem;
+            }
+
+            .checkout-diagnostics-filter-form {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 0.75rem 1rem;
+                align-items: flex-end;
+                margin: 1rem 0 1.5rem;
+            }
+
+            .checkout-diagnostics-range-actions {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 0.5rem;
+                flex-basis: 100%;
+            }
+
+            .checkout-diagnostics-filter-submit {
+                margin-top: 1.3rem;
+            }
+
+            .checkout-diagnostics-grid--stats {
+                grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr));
+                margin-bottom: 1.5rem;
+            }
+
+            .checkout-diagnostics-grid--cards {
+                grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
+            }
+
+            .checkout-diagnostics-panel {
+                min-width: 0;
+                box-sizing: border-box;
+                background: #fff;
+                border: 1px solid #dcdcde;
+                padding: 1rem;
+            }
+
+            .checkout-diagnostics-table-wrap {
+                max-width: 100%;
+                overflow-x: auto;
+            }
+
+            .checkout-diagnostics-table {
+                width: 100%;
+                min-width: 0;
+            }
+
+            .checkout-diagnostics-table th,
+            .checkout-diagnostics-table td {
+                white-space: normal;
+                word-break: break-word;
+                overflow-wrap: anywhere;
+            }
+
+            @media (max-width: 782px) {
+                .checkout-diagnostics-filter-form {
+                    align-items: stretch;
+                }
+
+                .checkout-diagnostics-filter-form label,
+                .checkout-diagnostics-filter-submit {
+                    width: 100%;
+                }
+
+                .checkout-diagnostics-filter-form input[type="date"] {
+                    width: 100%;
+                }
+
+                .checkout-diagnostics-panel {
+                    padding: 0.875rem;
+                }
+
+                .checkout-diagnostics-table th,
+                .checkout-diagnostics-table td {
+                    padding: 10px 8px;
+                }
+            }
+        </style>
+        <?php
+    }
+
+    /**
+     * Open the shared responsive table wrapper.
+     *
+     * @return void
+     */
+    private static function open_table_wrapper()
+    {
+        echo '<div class="checkout-diagnostics-table-wrap">';
+    }
+
+    /**
+     * Close the shared responsive table wrapper.
+     *
+     * @return void
+     */
+    private static function close_table_wrapper()
+    {
+        echo '</div>';
+    }
+
+    /**
+     * Get the admin report date range or default to the last 30 days.
      *
      * @return array
      */
     private static function get_requested_date_range()
     {
         $today = wp_date('Y-m-d');
+        $last_30_start = wp_date('Y-m-d', strtotime('-29 days', strtotime($today)));
         $month_start = wp_date('Y-m-01');
+        $requested_preset = isset($_GET['range']) ? sanitize_key(wp_unslash($_GET['range'])) : '';
+        $has_custom_dates = !empty($_GET['start_date']) || !empty($_GET['end_date']);
 
-        $start = isset($_GET['start_date']) ? sanitize_text_field(wp_unslash($_GET['start_date'])) : $month_start;
-        $end = isset($_GET['end_date']) ? sanitize_text_field(wp_unslash($_GET['end_date'])) : $today;
+        if ('all' === $requested_preset) {
+            $bounds = self::get_report_date_bounds();
 
-        if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $start)) {
-            $start = $month_start;
+            return array(
+                'start'  => $bounds['start'],
+                'end'    => $bounds['end'],
+                'preset' => 'all',
+            );
         }
 
-        if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $end)) {
-            $end = $today;
+        if ('this_month' === $requested_preset) {
+            return array(
+                'start'  => $month_start,
+                'end'    => $today,
+                'preset' => 'this_month',
+            );
         }
 
-        if ($start > $end) {
-            $start = $month_start;
-            $end = $today;
+        if ('last_30' === $requested_preset || !$has_custom_dates) {
+            return array(
+                'start'  => $last_30_start,
+                'end'    => $today,
+                'preset' => 'last_30',
+            );
+        }
+
+        $start = sanitize_text_field(wp_unslash(isset($_GET['start_date']) ? $_GET['start_date'] : ''));
+        $end = sanitize_text_field(wp_unslash(isset($_GET['end_date']) ? $_GET['end_date'] : ''));
+
+        if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $start) || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $end) || $start > $end) {
+            return array(
+                'start'  => $last_30_start,
+                'end'    => $today,
+                'preset' => 'last_30',
+            );
         }
 
         return array(
-            'start' => $start,
-            'end'   => $end,
+            'start'  => $start,
+            'end'    => $end,
+            'preset' => 'custom',
+        );
+    }
+
+    /**
+     * Get the earliest and latest dates available in diagnostics storage.
+     *
+     * @return array
+     */
+    private static function get_report_date_bounds()
+    {
+        global $wpdb;
+
+        $today = wp_date('Y-m-d');
+        $values = array();
+        $event_bounds = $wpdb->get_row(
+            "SELECT MIN(created_at) AS min_date, MAX(created_at) AS max_date FROM " . self::table_name(),
+            ARRAY_A
+        );
+        $session_bounds = $wpdb->get_row(
+            "SELECT MIN(last_seen_at) AS min_date, MAX(last_seen_at) AS max_date FROM " . self::sessions_table_name(),
+            ARRAY_A
+        );
+
+        foreach (array($event_bounds, $session_bounds) as $bounds) {
+            if (!empty($bounds['min_date'])) {
+                $values[] = wp_date('Y-m-d', strtotime($bounds['min_date']));
+            }
+
+            if (!empty($bounds['max_date'])) {
+                $values[] = wp_date('Y-m-d', strtotime($bounds['max_date']));
+            }
+        }
+
+        if (empty($values)) {
+            return array(
+                'start' => $today,
+                'end'   => $today,
+            );
+        }
+
+        sort($values);
+
+        return array(
+            'start' => reset($values),
+            'end'   => end($values),
         );
     }
 
