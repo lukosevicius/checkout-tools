@@ -1,9 +1,9 @@
 <?php
 /**
- * Plugin Name: Checkout Diagnostics
- * Description: Tracks checkout views, clicks, validation failures, and successful orders for the classic WooCommerce checkout.
+ * Plugin Name: Checkout Tools
+ * Description: Provides checkout diagnostics for the classic WooCommerce checkout.
  * Version: 0.2.5
- * Author: Codex
+ * Author: Mantas 
  * Text Domain: checkout-diagnostics
  */
 
@@ -20,7 +20,7 @@ require_once plugin_dir_path(__FILE__) . 'includes/traits/trait-checkout-diagnos
 require_once plugin_dir_path(__FILE__) . 'includes/traits/trait-checkout-diagnostics-tracking.php';
 require_once plugin_dir_path(__FILE__) . 'includes/traits/trait-checkout-diagnostics-admin.php';
 
-final class Checkout_Diagnostics_Plugin
+final class Checkout_Tools_Plugin
 {
     use Checkout_Diagnostics_Schema_Trait;
     use Checkout_Diagnostics_Storage_Trait;
@@ -77,4 +77,4 @@ final class Checkout_Diagnostics_Plugin
     }
 }
 
-Checkout_Diagnostics_Plugin::init();
+Checkout_Tools_Plugin::init();

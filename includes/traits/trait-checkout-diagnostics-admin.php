@@ -9,8 +9,8 @@ trait Checkout_Diagnostics_Admin_Trait
     {
         add_submenu_page(
             'woocommerce',
-            __('Checkout Diagnostics', 'checkout-diagnostics'),
-            __('Checkout Diagnostics', 'checkout-diagnostics'),
+            __('Checkout Tools', 'checkout-diagnostics'),
+            __('Checkout Tools', 'checkout-diagnostics'),
             'manage_woocommerce',
             'checkout-diagnostics',
             array(__CLASS__, 'render_admin_page')
@@ -301,12 +301,12 @@ trait Checkout_Diagnostics_Admin_Trait
 
         ?>
         <div class="wrap">
-            <h1><?php esc_html_e('Checkout Diagnostics', 'checkout-diagnostics'); ?></h1>
+            <h1><?php esc_html_e('Checkout Tools', 'checkout-diagnostics'); ?></h1>
             <p><?php esc_html_e('A lightweight view of checkout usage, validation pain points, and successful orders.', 'checkout-diagnostics'); ?></p>
 
             <?php if (!empty($_GET['settings-updated'])) : ?>
                 <div class="notice notice-success is-dismissible">
-                    <p><?php esc_html_e('Checkout Diagnostics settings saved.', 'checkout-diagnostics'); ?></p>
+                    <p><?php esc_html_e('Checkout Tools settings saved.', 'checkout-diagnostics'); ?></p>
                 </div>
             <?php endif; ?>
 
